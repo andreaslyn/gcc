@@ -34,6 +34,8 @@ extern void ix86_expand_prologue (void);
 extern void ix86_maybe_emit_epilogue_vzeroupper (void);
 extern void ix86_expand_epilogue (int);
 extern void ix86_expand_split_stack_prologue (void);
+extern void ix86_expand_yu_stack_prologue (void);
+extern void ix86_expand_yu_stack_epilogue (void);
 
 extern void ix86_output_addr_vec_elt (FILE *, int);
 extern void ix86_output_addr_diff_elt (FILE *, int, int);

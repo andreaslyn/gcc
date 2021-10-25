@@ -42,6 +42,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "stringpool.h"
 #include "common/common-target.h"
 #include "output.h"
+#include "attribs.h"
 
 static rtx break_out_memory_refs (rtx);
 static void anti_adjust_stack_and_probe_stack_clash (rtx);
@@ -1469,6 +1470,12 @@ allocate_dynamic_stack_space (rtx size, unsigned size_align,
 
       emit_label (available_label);
     }
+
+  if (lookup_attribute ("no_split_stack",
+			DECL_ATTRIBUTES (current_function_decl))
+      && flag_yu_stack
+      && !MAIN_NAME_P (DECL_NAME (current_function_decl)))
+    error ("yu stack does not support dynamic stack allocation");
 
  /* We ought to be called always on the toplevel and stack ought to be aligned
     properly.  */

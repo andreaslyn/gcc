@@ -1136,7 +1136,11 @@ ix86_function_regparm (const_tree type, const_tree decl)
 		local_regparm = 2;
 
 	      /* Save a register for the split stack.  */
-	      if (flag_split_stack)
+	      if (lookup_attribute ("no_split_stack",
+				    DECL_ATTRIBUTES (current_function_decl))
+		  && (flag_split_stack
+		      || (flag_yu_stack
+			  && !MAIN_NAME_P (DECL_NAME (current_function_decl)))))
 		{
 		  if (local_regparm == 3)
 		    local_regparm = 2;
@@ -6036,6 +6040,8 @@ get_probe_interval (void)
 
 #define SPLIT_STACK_AVAILABLE 256
 
+#define YU_STACK_AVAILABLE 224
+
 /* Fill structure ix86_frame about frame of currently computed function.  */
 
 static void
@@ -9453,6 +9459,8 @@ split_stack_prologue_scratch_regno (void)
 
 static GTY(()) rtx split_stack_fn;
 
+static GTY(()) rtx yu_stack_prologue_fn;
+
 /* A SYMBOL_REF for the more stack function when using the large
    model.  */
 
@@ -9480,6 +9488,139 @@ ix86_split_stack_guard (void)
   set_mem_addr_space (r, as);
 
   return r;
+}
+
+static rtx
+ix86_yu_stack_prologue_guard (void)
+{
+  int offset;
+  addr_space_t as = DEFAULT_TLS_SEG_REG;
+  rtx r;
+
+  gcc_assert (flag_yu_stack);
+
+  offset = TARGET_THREAD_YU_STACK_END_OFFSET;
+
+  r = GEN_INT (offset);
+  r = gen_const_mem (Pmode, r);
+  set_mem_addr_space (r, as);
+
+  return r;
+}
+
+static rtx
+ix86_yu_stack_epilogue_guard (void)
+{
+  int offset;
+  addr_space_t as = DEFAULT_TLS_SEG_REG;
+  rtx r;
+
+  gcc_assert (flag_yu_stack);
+
+  offset = TARGET_THREAD_YU_STACK_BEGIN_OFFSET;
+
+  r = GEN_INT (offset);
+  r = gen_const_mem (Pmode, r);
+  set_mem_addr_space (r, as);
+
+  return r;
+}
+
+void
+ix86_expand_yu_stack_prologue (void)
+{
+  HOST_WIDE_INT allocate;
+  rtx_code_label *label;
+  rtx limit, current, allocate_rtx, call_fusage;
+  rtx_insn *call_insn;
+  rtx scratch_reg = NULL_RTX;
+  rtx fn;
+
+  gcc_assert (flag_yu_stack && reload_completed);
+
+  ix86_finalize_stack_frame_flags ();
+  struct ix86_frame &frame = cfun->machine->frame;
+
+  allocate = frame.stack_pointer_offset - INCOMING_FRAME_SP_OFFSET;
+  if (!allocate)
+    return;
+
+  label = gen_label_rtx ();
+
+  limit = ix86_yu_stack_prologue_guard ();
+
+  if (allocate < YU_STACK_AVAILABLE)
+    current = stack_pointer_rtx;
+  else
+    {
+      rtx offset = GEN_INT (- allocate);
+      scratch_reg = gen_rtx_REG (Pmode, R11_REG);
+      if (x86_64_immediate_operand (offset, Pmode))
+      	emit_insn
+	  (gen_rtx_SET
+	    (scratch_reg,
+             gen_rtx_PLUS (Pmode, stack_pointer_rtx, offset)));
+      else
+	{
+	  emit_move_insn (scratch_reg, offset);
+	  emit_insn (gen_add2_insn (scratch_reg, stack_pointer_rtx));
+	}
+      current = scratch_reg;
+    }
+
+  ix86_expand_branch (GEU, current, limit, label);
+  rtx_insn *jump_insn = get_last_insn ();
+  JUMP_LABEL (jump_insn) = label;
+
+  add_reg_br_prob_note (jump_insn, profile_probability::very_likely ());
+
+  if (yu_stack_prologue_fn == NULL_RTX)
+    {
+      yu_stack_prologue_fn = gen_rtx_SYMBOL_REF (Pmode, "__yu_morestack");
+      SYMBOL_REF_FLAGS (yu_stack_prologue_fn) |= SYMBOL_FLAG_LOCAL;
+    }
+  fn = yu_stack_prologue_fn;
+
+  allocate_rtx = gen_rtx_CONST_INT (DImode, allocate);
+  call_fusage = NULL_RTX;
+
+  rtx reg10 = gen_rtx_REG (DImode, R10_REG);
+
+  if (DECL_STATIC_CHAIN (cfun->decl))
+    error ("static chain not supported by yu stack");
+
+  if ((ix86_cmodel == CM_LARGE || ix86_cmodel == CM_LARGE_PIC)
+	&& !TARGET_PECOFF)
+    error ("invalid operation/function in yu stack function");
+
+  emit_move_insn (reg10, allocate_rtx);
+  use_reg (&call_fusage, reg10);
+  call_insn = ix86_expand_call (NULL_RTX, gen_rtx_MEM (QImode, fn),
+				GEN_INT (UNITS_PER_WORD), constm1_rtx,
+				NULL_RTX, false);
+  add_function_usage_to (call_insn, call_fusage);
+
+  make_reg_eh_region_note_nothrow_nononlocal (call_insn);
+
+  emit_label (label);
+  LABEL_NUSES (label) = 1;
+}
+
+void
+ix86_expand_yu_stack_epilogue (void)
+{
+  gcc_assert (flag_yu_stack && reload_completed);
+
+  ix86_finalize_stack_frame_flags ();
+  struct ix86_frame &frame = cfun->machine->frame;
+  if (!(frame.stack_pointer_offset - INCOMING_FRAME_SP_OFFSET))
+    return;
+
+  rtx limit = ix86_yu_stack_epilogue_guard ();
+  (void)limit;
+  //emit_insn (gen_cmp_1 (Pmode, stack_pointer_rtx, limit));
+  emit_insn (gen_cmp_1 (Pmode, stack_pointer_rtx, hard_frame_pointer_rtx));
+  emit_insn (gen_je_yu_lessstack (const0_rtx));
 }
 
 /* Handle -fsplit-stack.  These are the first instructions in the

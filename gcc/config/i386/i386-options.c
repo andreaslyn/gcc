@@ -2620,8 +2620,9 @@ ix86_option_override_internal (bool main_args_p,
 	gcc_unreachable ();
       }
 
-  if (ix86_tune_features [X86_TUNE_ACCUMULATE_OUTGOING_ARGS]
-      && !(opts_set->x_target_flags & MASK_ACCUMULATE_OUTGOING_ARGS))
+  if (flag_yu_stack
+      || (ix86_tune_features [X86_TUNE_ACCUMULATE_OUTGOING_ARGS]
+	  && !(opts_set->x_target_flags & MASK_ACCUMULATE_OUTGOING_ARGS)))
     opts->x_target_flags |= MASK_ACCUMULATE_OUTGOING_ARGS;
 
   /* If stack probes are required, the space used for large function

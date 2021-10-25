@@ -5774,6 +5774,46 @@ make_split_prologue_seq (void)
   return seq;
 }
 
+static rtx_insn *
+make_yu_prologue_seq (void)
+{
+  if (!flag_yu_stack
+      || lookup_attribute ("no_split_stack",
+			   DECL_ATTRIBUTES (current_function_decl))
+      || MAIN_NAME_P (DECL_NAME (current_function_decl)))
+    return NULL;
+
+  start_sequence ();
+  emit_insn (targetm.gen_yu_stack_prologue ());
+  rtx_insn *seq = get_insns ();
+  end_sequence ();
+
+  record_insns (seq, NULL, &prologue_insn_hash);
+  set_insn_locations (seq, prologue_location);
+
+  return seq;
+}
+
+static rtx_insn *
+make_yu_epilogue_seq (void)
+{
+  if (!flag_yu_stack
+      || lookup_attribute ("no_split_stack",
+			   DECL_ATTRIBUTES (current_function_decl))
+      || MAIN_NAME_P (DECL_NAME (current_function_decl)))
+    return NULL;
+
+  start_sequence ();
+  emit_insn (targetm.gen_yu_stack_epilogue ());
+  rtx_insn *seq = get_insns ();
+  end_sequence ();
+
+  record_insns (seq, NULL, &epilogue_insn_hash);
+  set_insn_locations (seq, epilogue_location);
+
+  return seq;
+}
+
 /* Return a sequence to be used as the prologue for the current function,
    or NULL.  */
 
@@ -5901,8 +5941,10 @@ thread_prologue_and_epilogue_insns (void)
   edge orig_entry_edge = entry_edge;
 
   rtx_insn *split_prologue_seq = make_split_prologue_seq ();
+  rtx_insn *yu_prologue_seq = make_yu_prologue_seq ();
   rtx_insn *prologue_seq = make_prologue_seq ();
   rtx_insn *epilogue_seq = make_epilogue_seq ();
+  rtx_insn *yu_epilogue_seq = make_yu_epilogue_seq ();
 
   /* Try to perform a kind of shrink-wrapping, making sure the
      prologue/epilogue is emitted only around those parts of the
@@ -5922,8 +5964,10 @@ thread_prologue_and_epilogue_insns (void)
   if (crtl->shrink_wrapped_separate)
     {
       split_prologue_seq = make_split_prologue_seq ();
+      yu_prologue_seq = make_yu_prologue_seq ();
       prologue_seq = make_prologue_seq ();
       epilogue_seq = make_epilogue_seq ();
+      yu_epilogue_seq = make_yu_epilogue_seq ();
     }
 
   rtl_profile_for_bb (EXIT_BLOCK_PTR_FOR_FN (cfun));
@@ -5965,8 +6009,40 @@ thread_prologue_and_epilogue_insns (void)
     {
       if (epilogue_seq)
 	{
-	  insert_insn_on_edge (epilogue_seq, exit_fallthru_edge);
-	  commit_edge_insertions ();
+	  if (yu_epilogue_seq)
+	    {
+	      start_sequence();
+	      for (rtx_insn *i = epilogue_seq, *prev = NULL;;)
+		{
+		  rtx_insn *n = NEXT_INSN (i);
+		  if (!n)
+		    {
+		      if (prev)
+			SET_NEXT_INSN (prev) = NULL;
+		      SET_PREV_INSN (i) = NULL;
+		      SET_NEXT_INSN (i) = NULL;
+		      emit_insn (epilogue_seq);
+	      	      emit_insn (yu_epilogue_seq);
+		      emit_insn (i);
+		      break;
+		    }
+		  prev = i;
+		  i = n;
+		}
+	      rtx_insn *epi_seq = get_insns();
+	      end_sequence();
+	      insert_insn_on_edge (epi_seq, exit_fallthru_edge);
+	      commit_edge_insertions ();
+	      auto_sbitmap blocks (last_basic_block_for_fn (cfun));
+	      bitmap_clear (blocks);
+	      bitmap_set_bit (blocks, BLOCK_FOR_INSN (epi_seq)->index);
+	      find_many_sub_basic_blocks (blocks);
+	    }
+	  else
+	    {
+	      insert_insn_on_edge (epilogue_seq, exit_fallthru_edge);
+	      commit_edge_insertions ();
+	    }
 
 	  /* The epilogue insns we inserted may cause the exit edge to no longer
 	     be fallthru.  */
@@ -6000,7 +6076,7 @@ thread_prologue_and_epilogue_insns (void)
 
   rtl_profile_for_bb (ENTRY_BLOCK_PTR_FOR_FN (cfun));
 
-  if (split_prologue_seq || prologue_seq)
+  if (split_prologue_seq || yu_prologue_seq || prologue_seq)
     {
       rtx_insn *split_prologue_insn = split_prologue_seq;
       if (split_prologue_seq)
@@ -6008,6 +6084,14 @@ thread_prologue_and_epilogue_insns (void)
 	  while (split_prologue_insn && !NONDEBUG_INSN_P (split_prologue_insn))
 	    split_prologue_insn = NEXT_INSN (split_prologue_insn);
 	  insert_insn_on_edge (split_prologue_seq, orig_entry_edge);
+	}
+
+      rtx_insn *yu_prologue_insn = yu_prologue_seq;
+      if (yu_prologue_seq)
+	{
+	  while (yu_prologue_insn && !NONDEBUG_INSN_P (yu_prologue_insn))
+	    yu_prologue_insn = NEXT_INSN (yu_prologue_insn);
+	  insert_insn_on_edge (yu_prologue_seq, orig_entry_edge);
 	}
 
       rtx_insn *prologue_insn = prologue_seq;
@@ -6024,16 +6108,22 @@ thread_prologue_and_epilogue_insns (void)
       if (split_prologue_insn
 	  && BLOCK_FOR_INSN (split_prologue_insn) == NULL)
 	split_prologue_insn = NULL;
+      if (yu_prologue_insn
+	  && BLOCK_FOR_INSN (yu_prologue_insn) == NULL)
+	yu_prologue_insn = NULL;
       if (prologue_insn
 	  && BLOCK_FOR_INSN (prologue_insn) == NULL)
 	prologue_insn = NULL;
-      if (split_prologue_insn || prologue_insn)
+      if (split_prologue_insn || yu_prologue_insn || prologue_insn)
 	{
 	  auto_sbitmap blocks (last_basic_block_for_fn (cfun));
 	  bitmap_clear (blocks);
 	  if (split_prologue_insn)
 	    bitmap_set_bit (blocks,
 			    BLOCK_FOR_INSN (split_prologue_insn)->index);
+	  if (yu_prologue_insn)
+	    bitmap_set_bit (blocks,
+			    BLOCK_FOR_INSN (yu_prologue_insn)->index);
 	  if (prologue_insn)
 	    bitmap_set_bit (blocks, BLOCK_FOR_INSN (prologue_insn)->index);
 	  find_many_sub_basic_blocks (blocks);

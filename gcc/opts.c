@@ -1065,12 +1065,39 @@ finish_options (struct gcc_options *opts, struct gcc_options *opts_set,
 	}
     }
 
+  if (opts->x_flag_yu_stack == -1)
+    opts->x_flag_yu_stack = 0;
+  else if (opts->x_flag_yu_stack)
+    {
+      if (!targetm_common.supports_yu_stack (true, opts))
+	{
+	  error_at (loc, "%<-fyu-stack%> is not supported by "
+		    "this compiler configuration");
+	  opts->x_flag_yu_stack = 0;
+	}
+      if (opts->x_flag_omit_frame_pointer)
+	{
+	  error_at (loc, "%<-fyu-stack%> is incompatible with "
+		    "%<-fomit-frame-pointer%>, "
+		    "perhaps %<-fno-omit-frame-pointer%> is needed?");
+	  opts->x_flag_yu_stack = 0;
+	}
+    }
+
+  if (opts->x_flag_yu_stack && opts->x_flag_split_stack)
+    {
+      error_at (loc, "combining %<-fyu-stack%> and %<-fsplit-stack%> "
+		"is not supported");
+      opts->x_flag_yu_stack = 0;
+      opts->x_flag_split_stack = 0;
+    }
+
   /* If stack splitting is turned on, and the user did not explicitly
      request function partitioning, turn off partitioning, as it
      confuses the linker when trying to handle partitioned split-stack
      code that calls a non-split-stack functions.  But if partitioning
      was turned on explicitly just hope for the best.  */
-  if (opts->x_flag_split_stack
+  if ((opts->x_flag_split_stack || opts->x_flag_yu_stack)
       && opts->x_flag_reorder_blocks_and_partition)
     SET_OPTION_IF_UNSET (opts, opts_set, flag_reorder_blocks_and_partition, 0);
 

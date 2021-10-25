@@ -1498,6 +1498,36 @@ ix86_supports_split_stack (bool report ATTRIBUTE_UNUSED,
   return ret;
 }
 
+static bool
+ix86_supports_yu_stack (bool report ATTRIBUTE_UNUSED,
+			struct gcc_options *opts ATTRIBUTE_UNUSED)
+{
+  bool ret = true;
+
+#ifndef TARGET_THREAD_SPLIT_STACK_OFFSET
+  if (report)
+    error ("%<-fyu-stack%> currently only supported on GNU/Linux");
+  ret = false;
+#else
+  if (!HAVE_GAS_CFI_PERSONALITY_DIRECTIVE)
+    {
+      if (report)
+	error ("%<-fyu-stack%> requires "
+	       "assembler support for CFI directives");
+      ret = false;
+    }
+#endif
+
+  if (!TARGET_64BIT || TARGET_X32)
+    {
+      if (report)
+	error ("%<-fyu-stack%> is supported only on x86-64 target");
+      ret = false;
+    }
+
+  return ret;
+}
+
 /* Implement TARGET_EXCEPT_UNWIND_INFO.  */
 
 static enum unwind_info_type
@@ -1538,6 +1568,9 @@ i386_except_unwind_info (struct gcc_options *opts)
 
 #undef TARGET_SUPPORTS_SPLIT_STACK
 #define TARGET_SUPPORTS_SPLIT_STACK ix86_supports_split_stack
+
+#undef TARGET_SUPPORTS_YU_STACK
+#define TARGET_SUPPORTS_YU_STACK ix86_supports_yu_stack
 
 /* This table must be in sync with enum processor_type in i386.h.  */
 const char *const processor_names[] =
