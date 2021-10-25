@@ -2641,6 +2641,10 @@ fsplit-stack
 Common Var(flag_split_stack) Init(-1)
 Generate discontiguous stack frames.
 
+fyu-stack
+Common Var(flag_yu_stack) Init(-1)
+Generate yu stack frames.
+
 fsplit-wide-types
 Common Var(flag_split_wide_types) Optimization
 Split wide types into independent registers.

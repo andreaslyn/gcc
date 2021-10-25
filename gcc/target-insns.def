@@ -95,6 +95,8 @@ DEF_TARGET_INSN (sibcall_value, (rtx x0, rtx x1, rtx opt2, rtx opt3,
 				 rtx opt4))
 DEF_TARGET_INSN (simple_return, (void))
 DEF_TARGET_INSN (split_stack_prologue, (void))
+DEF_TARGET_INSN (yu_stack_prologue, (void))
+DEF_TARGET_INSN (yu_stack_epilogue, (void))
 DEF_TARGET_INSN (split_stack_space_check, (rtx x0, rtx x1))
 DEF_TARGET_INSN (stack_protect_combined_set, (rtx x0, rtx x1))
 DEF_TARGET_INSN (stack_protect_set, (rtx x0, rtx x1))

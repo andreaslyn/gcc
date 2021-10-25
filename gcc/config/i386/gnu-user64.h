@@ -91,6 +91,12 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
    x86_64 glibc provides it in %fs:0x70.  */
 #define TARGET_THREAD_SPLIT_STACK_OFFSET \
   (TARGET_64BIT ? (TARGET_X32 ? 0x40 : 0x70) : 0x30)
+
+// __private_ss same as split stack.
+#define TARGET_THREAD_YU_STACK_END_OFFSET 0x70
+
+// FIXME: change this when __private_ss_end has been added to tls in glibc.
+#define TARGET_THREAD_YU_STACK_BEGIN_OFFSET 0x80
 #endif
 
 #undef WCHAR_TYPE

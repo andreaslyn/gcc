@@ -5243,6 +5243,10 @@ returns false.  If @var{report} is true, this function may issue a warning
 or error; if @var{report} is false, it must simply return a value
 @end deftypefn
 
+@deftypefn {Common Target Hook} bool TARGET_SUPPORTS_YU_STACK (bool @var{report}, struct gcc_options *@var{opts})
+Whether this target supports splitting the stack when the options described in @var{opts} have been passed.  This is called after options have been parsed, so the target may reject splitting the stack in some configurations.  The default version of this hook returns false.  If @var{report} is true, this function may issue a warning or error; if @var{report} is false, it must simply return a value
+@end deftypefn
+
 @deftypefn {Common Target Hook} {vec<const char *>} TARGET_GET_VALID_OPTION_VALUES (int @var{option_code}, const char *@var{prefix})
 The hook is used for options that have a non-trivial list of
 possible option values.  OPTION_CODE is option code of opt_code
