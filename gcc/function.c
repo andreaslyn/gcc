@@ -6012,31 +6012,15 @@ thread_prologue_and_epilogue_insns (void)
 	  if (yu_epilogue_seq)
 	    {
 	      start_sequence();
-	      for (rtx_insn *i = epilogue_seq, *prev = NULL;;)
-		{
-		  rtx_insn *n = NEXT_INSN (i);
-		  if (!n)
-		    {
-		      if (prev)
-			SET_NEXT_INSN (prev) = NULL;
-		      SET_PREV_INSN (i) = NULL;
-		      SET_NEXT_INSN (i) = NULL;
-		      emit_insn (epilogue_seq);
-	      	      emit_insn (yu_epilogue_seq);
-		      emit_insn (i);
-		      break;
-		    }
-		  prev = i;
-		  i = n;
-		}
+	      emit_insn (epilogue_seq);
+	      rtx_insn *ret_insn = get_last_insn ();
+	      remove_insn (ret_insn);
+	      emit_insn (yu_epilogue_seq);
+	      emit_insn (ret_insn);
 	      rtx_insn *epi_seq = get_insns();
 	      end_sequence();
 	      insert_insn_on_edge (epi_seq, exit_fallthru_edge);
 	      commit_edge_insertions ();
-	      auto_sbitmap blocks (last_basic_block_for_fn (cfun));
-	      bitmap_clear (blocks);
-	      bitmap_set_bit (blocks, BLOCK_FOR_INSN (epi_seq)->index);
-	      find_many_sub_basic_blocks (blocks);
 	    }
 	  else
 	    {
